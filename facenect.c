@@ -424,7 +424,7 @@ void *freenect_threadfunc(void *arg) {
 		}
 
 		if (requested_format != current_format) {
-u			freenect_stop_video(f_dev);
+			freenect_stop_video(f_dev);
 			freenect_set_video_format(f_dev, requested_format);
 			freenect_start_video(f_dev);
 			current_format = requested_format;
