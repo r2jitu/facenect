@@ -24,7 +24,6 @@
  * either License.
  */
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +43,7 @@
 #endif
 
 #include <math.h>
+#include <time.h>
 
 pthread_t freenect_thread;
 volatile int die = 0;
@@ -61,6 +61,8 @@ pthread_mutex_t gl_backbuf_mutex = PTHREAD_MUTEX_INITIALIZER;
 uint8_t *depth_mid, *depth_front;
 uint8_t *rgb_back, *rgb_mid, *rgb_front;
 
+uint16_t *depth_back, *depth_back_real;
+
 GLuint gl_depth_tex;
 GLuint gl_rgb_tex;
 
@@ -76,8 +78,38 @@ pthread_cond_t gl_frame_cond = PTHREAD_COND_INITIALIZER;
 int got_rgb = 0;
 int got_depth = 0;
 
-void DrawGLScene()
-{
+/* Take snapshot of current depth and rgb */
+void snapshot() {
+
+  /* Apply timestamp */
+  time_t sec = time( NULL );
+  char filename[32];
+  sprintf(filename,"captures/%ld.kin",sec);
+  FILE * file = fopen(filename,"w");
+
+  printf("omg: Snapshot --> file %s\n", filename);
+  fflush(stdout);
+
+  int i = 0;
+  int cnt = 640*480;
+
+  pthread_mutex_lock(&gl_backbuf_mutex);
+  /* Write in r g b d, one per line, format */
+  for (;i<cnt;i++) {
+    fprintf(file,
+            "%d %d %d %d\n",
+            rgb_mid[3*i+0], 
+            rgb_mid[3*i+1], 
+            rgb_mid[3*i+2], 
+            depth_back[i]
+            );
+  }
+  pthread_mutex_unlock(&gl_backbuf_mutex);
+
+  fclose(file);
+}
+
+void DrawGLScene() {
 	pthread_mutex_lock(&gl_backbuf_mutex);
 
 	// When using YUV_RGB mode, RGB frames only arrive at 15Hz, so we shouldn't force them to draw in lock-step.
@@ -144,17 +176,21 @@ void DrawGLScene()
 	glTexCoord2f(0, 1); glVertex3f(640,480,0);
 	glEnd();
 
-	glutSwapBuffers();
+ 	glutSwapBuffers();
 }
 
-void keyPressed(unsigned char key, int x, int y)
-{
+/* Key input */
+void keyPressed(unsigned char key, int x, int y) {
+  if (key == 13) {
+    snapshot();
+  }
 	if (key == 27) {
 		die = 1;
 		pthread_join(freenect_thread, NULL);
 		glutDestroyWindow(window);
 		free(depth_mid);
 		free(depth_front);
+    free(depth_back_real);
 		free(rgb_back);
 		free(rgb_mid);
 		free(rgb_front);
@@ -205,6 +241,7 @@ void keyPressed(unsigned char key, int x, int y)
 	if (key == '0') {
 		freenect_set_led(f_dev,LED_OFF);
 	}
+  
 	freenect_set_tilt_degs(f_dev,freenect_angle);
 }
 
@@ -270,6 +307,12 @@ void depth_cb(freenect_device *dev, void *v_depth, uint32_t timestamp)
 	uint16_t *depth = (uint16_t*)v_depth;
 
 	pthread_mutex_lock(&gl_backbuf_mutex);
+
+  /* Swap buffers */
+  freenect_set_depth_buffer(dev, depth_back);
+  depth_back = depth;
+
+  /* Depth to RGB */
 	for (i=0; i<FREENECT_FRAME_PIX; i++) {
 		int pval = t_gamma[depth[i]];
     int X = pval*256.0/gamma_range;
@@ -334,8 +377,8 @@ void depth_cb(freenect_device *dev, void *v_depth, uint32_t timestamp)
 	pthread_mutex_unlock(&gl_backbuf_mutex);
 }
 
-void rgb_cb(freenect_device *dev, void *rgb, uint32_t timestamp)
-{
+void rgb_cb(freenect_device *dev, void *rgb, uint32_t timestamp) {
+
 	pthread_mutex_lock(&gl_backbuf_mutex);
 
 	// swap buffers
@@ -349,8 +392,8 @@ void rgb_cb(freenect_device *dev, void *rgb, uint32_t timestamp)
 	pthread_mutex_unlock(&gl_backbuf_mutex);
 }
 
-void *freenect_threadfunc(void *arg)
-{
+void *freenect_threadfunc(void *arg) {
+
 	int accelCount = 0;
 
 	freenect_set_tilt_degs(f_dev,freenect_angle);
@@ -400,12 +443,16 @@ void *freenect_threadfunc(void *arg)
 	return NULL;
 }
 
-int main(int argc, char **argv)
-{
+/* Entry Point */
+int main(int argc, char **argv) {
+
 	int res;
 
+  /* Allocate buffers */
 	depth_mid = (uint8_t*)malloc(640*480*3);
 	depth_front = (uint8_t*)malloc(640*480*3);
+	depth_back = (uint16_t*)malloc(640*480*sizeof(uint16_t));
+  depth_back_real = depth_back;
 	rgb_back = (uint8_t*)malloc(640*480*3);
 	rgb_mid = (uint8_t*)malloc(640*480*3);
 	rgb_front = (uint8_t*)malloc(640*480*3);
