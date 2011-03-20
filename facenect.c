@@ -181,9 +181,11 @@ void DrawGLScene() {
 
 /* Key input */
 void keyPressed(unsigned char key, int x, int y) {
-  if (key == 13) {
+
+  if (key == 'q') {
     snapshot();
   }
+
 	if (key == 27) {
 		die = 1;
 		pthread_join(freenect_thread, NULL);
