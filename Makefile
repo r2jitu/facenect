@@ -14,7 +14,6 @@ LIBS = -lGLU -lGL -lSM -lICE -lX11 -lXext -lglut -lXmu -lXi -lusb-1.0 -lpthread 
 all: facenect
 
 facenect: facenect.c.o
-	echo "foo"
 	$(CC) -o $@ $(LDFLAGS) $(LIBS) $^
 
 %.c.o: %.c
